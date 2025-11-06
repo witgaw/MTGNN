@@ -2,6 +2,7 @@ import torch.optim as optim
 import math
 from net import *
 import util
+import numpy as np
 class Trainer():
     def __init__(self, model, lrate, wdecay, clip, step_size, seq_out_len, scaler, device, cl=True):
         self.scaler = scaler
@@ -118,3 +119,52 @@ class Optim(object):
         self.last_ppl = ppl
 
         self._makeOptimizer()
+
+
+def create_data_loader_from_arrays(X, y, train_ratio=0.6, val_ratio=0.2, device='cpu', normalize=2):
+    """
+    Create data loaders from numpy arrays using existing DataLoaderS logic.
+    
+    Args:
+        X (np.ndarray): Input sequences, shape (samples, seq_len, num_nodes)
+        y (np.ndarray): Target sequences, shape (samples, horizon, num_nodes)
+        train_ratio (float): Ratio of data for training
+        val_ratio (float): Ratio of data for validation
+        device (str): Device to use
+        normalize (int): Normalization method (0, 1, or 2)
+        
+    Returns:
+        object: Data loader object compatible with existing training code
+    """
+    from util import DataLoaderS
+    
+    # Convert to format expected by DataLoaderS (samples, features)
+    # For now, just use the first node and first horizon as a simple case
+    # This can be extended for multi-node, multi-horizon cases
+    
+    # Flatten to 2D: (samples, features)
+    X_flat = X.reshape(X.shape[0], -1)  # (samples, seq_len * num_nodes)
+    y_flat = y[:, 0, 0]  # Just first horizon, first node for simplicity
+    
+    # Combine for DataLoaderS format
+    data = np.column_stack([X_flat, y_flat.reshape(-1, 1)])
+    
+    # Save to temporary file for DataLoaderS
+    import tempfile
+    import os
+    temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False)
+    np.savetxt(temp_file.name, data, delimiter=',')
+    temp_file.close()
+    
+    # Create DataLoaderS
+    horizon = y.shape[1]
+    window = X.shape[1]
+    
+    try:
+        data_loader = DataLoaderS(temp_file.name, train_ratio, val_ratio, 
+                                torch.device(device), horizon, window, normalize)
+    finally:
+        # Clean up temp file
+        os.unlink(temp_file.name)
+    
+    return data_loader

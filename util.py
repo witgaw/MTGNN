@@ -198,17 +198,29 @@ def load_pickle(pickle_file):
         raise
     return pickle_data
 
-def load_adj(pkl_filename):
+
+def load_adj(pkl_filename, adj_data=None):
+    if adj_data is not None:
+        if isinstance(adj_data, tuple) and len(adj_data) == 3:
+            sensor_ids, sensor_id_to_ind, adj = adj_data
+        else:
+            adj = adj_data
+        return adj
     sensor_ids, sensor_id_to_ind, adj = load_pickle(pkl_filename)
     return adj
 
 
-def load_dataset(dataset_dir, batch_size, valid_batch_size= None, test_batch_size=None):
+def load_dataset(dataset_dir, batch_size, valid_batch_size= None, test_batch_size=None, injected_data=None):
     data = {}
-    for category in ['train', 'val', 'test']:
-        cat_data = np.load(os.path.join(dataset_dir, category + '.npz'))
-        data['x_' + category] = cat_data['x']
-        data['y_' + category] = cat_data['y']
+    if injected_data is not None:
+        for key in ['x_train', 'y_train', 'x_val', 'y_val', 'x_test', 'y_test']:
+            if key in injected_data:
+                data[key] = injected_data[key]
+    else:
+        for category in ['train', 'val', 'test']:
+            cat_data = np.load(os.path.join(dataset_dir, category + '.npz'))
+            data['x_' + category] = cat_data['x']
+            data['y_' + category] = cat_data['y']
     scaler = StandardScaler(mean=data['x_train'][..., 0].mean(), std=data['x_train'][..., 0].std())
     # Data format
     for category in ['train', 'val', 'test']:
