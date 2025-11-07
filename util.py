@@ -210,7 +210,7 @@ def load_adj(pkl_filename, adj_data=None):
     return adj
 
 
-def load_dataset(dataset_dir, batch_size, valid_batch_size= None, test_batch_size=None, injected_data=None):
+def load_dataset(dataset_dir, batch_size, valid_batch_size=None, test_batch_size=None, injected_data=None):
     data = {}
     if injected_data is not None:
         for key in ['x_train', 'y_train', 'x_val', 'y_val', 'x_test', 'y_test']:
@@ -225,6 +225,12 @@ def load_dataset(dataset_dir, batch_size, valid_batch_size= None, test_batch_siz
     # Data format
     for category in ['train', 'val', 'test']:
         data['x_' + category][..., 0] = scaler.transform(data['x_' + category][..., 0])
+
+    # Use batch_size as default for validation/test if not specified
+    if valid_batch_size is None:
+        valid_batch_size = batch_size
+    if test_batch_size is None:
+        test_batch_size = batch_size
 
     data['train_loader'] = DataLoaderM(data['x_train'], data['y_train'], batch_size)
     data['val_loader'] = DataLoaderM(data['x_val'], data['y_val'], valid_batch_size)

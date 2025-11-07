@@ -33,6 +33,7 @@ class TrainingConfig:
 
     # Training parameters
     batch_size: int = 64
+    val_batch_size: int | None = None  # If None, uses batch_size
     epochs: int = 100
     learning_rate: float = 0.001
     weight_decay: float = 0.0001
@@ -171,7 +172,8 @@ def _train_internal(config: InternalTrainingConfig, runid: int, injected_data=No
     #load data
     device = torch.device(config.device)
 
-    dataloader = load_dataset(config.data, config.batch_size, config.batch_size, config.batch_size, injected_data=injected_data)
+    val_batch_size = config.val_batch_size if config.val_batch_size is not None else config.batch_size
+    dataloader = load_dataset(config.data, config.batch_size, val_batch_size, val_batch_size, injected_data=injected_data)
     scaler = dataloader['scaler']
 
     predefined_A = load_adj(config.adj_data, adj_data=injected_adj)
@@ -274,6 +276,10 @@ def _train_internal(config: InternalTrainingConfig, runid: int, injected_data=No
     print("Average Training Time: {:.4f} secs/epoch".format(np.mean(train_time)))
     print("Average Inference Time: {:.4f} secs".format(np.mean(val_time)))
 
+    # Clear GPU memory after training
+    if device.type == 'cuda':
+        torch.cuda.empty_cache()
+
 
     bestid = np.argmin(his_loss)
     engine.model.load_state_dict(torch.load(config.save + "exp" + str(config.expid) + "_" + str(runid) +".pth"))
@@ -283,7 +289,7 @@ def _train_internal(config: InternalTrainingConfig, runid: int, injected_data=No
 
     #valid data
     outputs = []
-    realy = torch.Tensor(dataloader['y_val']).to(device)
+    realy = torch.Tensor(dataloader['y_val'])
     realy = realy.transpose(1,3)[:,0,:,:]
 
     for iter, (x, y) in enumerate(dataloader['val_loader'].get_iterator()):
@@ -292,18 +298,25 @@ def _train_internal(config: InternalTrainingConfig, runid: int, injected_data=No
         with torch.no_grad():
             preds = engine.model(testx)
             preds = preds.transpose(1,3)
-        outputs.append(preds.squeeze())
+        outputs.append(preds.squeeze().cpu())
 
     yhat = torch.cat(outputs,dim=0)
     yhat = yhat[:realy.size(0),...]
 
-
+    # Move tensors to device only for metric computation
+    yhat = yhat.to(device)
+    realy = realy.to(device)
     pred = scaler.inverse_transform(yhat)
     vmae, vmape, vrmse = metric(pred,realy)
 
+    # Clean up validation tensors and clear GPU memory
+    del yhat, realy, pred
+    if device.type == 'cuda':
+        torch.cuda.empty_cache()
+
     #test data
     outputs = []
-    realy = torch.Tensor(dataloader['y_test']).to(device)
+    realy = torch.Tensor(dataloader['y_test'])
     realy = realy.transpose(1, 3)[:, 0, :, :]
 
     for iter, (x, y) in enumerate(dataloader['test_loader'].get_iterator()):
@@ -312,7 +325,7 @@ def _train_internal(config: InternalTrainingConfig, runid: int, injected_data=No
         with torch.no_grad():
             preds = engine.model(testx)
             preds = preds.transpose(1, 3)
-        outputs.append(preds.squeeze())
+        outputs.append(preds.squeeze().cpu())
 
     yhat = torch.cat(outputs, dim=0)
     yhat = yhat[:realy.size(0), ...]
@@ -321,9 +334,11 @@ def _train_internal(config: InternalTrainingConfig, runid: int, injected_data=No
     mape = []
     rmse = []
     for i in range(config.seq_out_len):
-        pred = scaler.inverse_transform(yhat[:, :, i])
-        real = realy[:, :, i]
-        metrics = metric(pred, real)
+        # Move to device only for this horizon's computation
+        yhat_i = yhat[:, :, i].to(device)
+        real_i = realy[:, :, i].to(device)
+        pred = scaler.inverse_transform(yhat_i)
+        metrics = metric(pred, real_i)
         log = 'Evaluate best model on test data for horizon {:d}, Test MAE: {:.4f}, Test MAPE: {:.4f}, Test RMSE: {:.4f}'
         print(log.format(i + 1, metrics[0], metrics[1], metrics[2]))
         mae.append(metrics[0])
