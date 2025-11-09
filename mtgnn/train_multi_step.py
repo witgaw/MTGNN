@@ -5,9 +5,9 @@ from dataclasses import asdict, dataclass
 import numpy as np
 import torch
 
-from net import MTGNNModel, gtnet
-from trainer import Trainer
-from util import *
+from .net import MTGNNModel, gtnet
+from .trainer import Trainer
+from .util import *
 
 
 @dataclass

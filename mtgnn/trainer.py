@@ -1,7 +1,7 @@
 import torch.optim as optim
 import math
-from net import *
-import util
+from .net import *
+from . import util
 import numpy as np
 class Trainer():
     def __init__(self, model, lrate, wdecay, clip, step_size, seq_out_len, scaler, device, cl=True):
@@ -136,7 +136,7 @@ def create_data_loader_from_arrays(X, y, train_ratio=0.6, val_ratio=0.2, device=
     Returns:
         object: Data loader object compatible with existing training code
     """
-    from util import DataLoaderS
+    from .util import DataLoaderS
     
     # Convert to format expected by DataLoaderS (samples, features)
     # For now, just use the first node and first horizon as a simple case

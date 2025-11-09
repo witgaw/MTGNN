@@ -4,12 +4,12 @@ import time
 
 import torch
 import torch.nn as nn
-from net import gtnet
+from .net import gtnet
 import numpy as np
 import importlib
 
-from util import *
-from trainer import Optim
+from .util import *
+from .trainer import Optim
 
 
 def evaluate(data, X, Y, model, evaluateL2, evaluateL1, batch_size):

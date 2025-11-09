@@ -11,16 +11,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/nnzhan/MTGNN",
-    packages=find_packages(),
-    py_modules=[
-        "net",
-        "layer",
-        "trainer",
-        "util",
-        "train_single_step",
-        "train_multi_step",
-        "generate_training_data",
-    ],
+    packages=["mtgnn"],
     python_requires=">=3.7",
     install_requires=[
         "torch>=1.2.0",

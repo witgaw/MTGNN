@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from layer import *
+from .layer import *
 
 
 class gtnet(nn.Module):
