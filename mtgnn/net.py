@@ -1,5 +1,8 @@
 import numpy as np
 import torch
+from safetensors.torch import save_file, load_file
+import json
+import os
 
 from .layer import *
 
@@ -329,14 +332,34 @@ class MTGNNModel:
         Args:
             path (str): Path to save the model
         """
-        save_dict = {
-            "model_state_dict": self.model.state_dict(),
-            "config": self.config,
-            "scaler": self.scaler,
-            "learned_adj": self.learned_adj,
-        }
-        torch.save(save_dict, path)
+        # Prepare tensors for safetensors
+        tensors = self.model.state_dict().copy()
+        
+        # Add scaler and learned_adj as tensors if they exist
+        if self.scaler is not None:
+            if hasattr(self.scaler, 'mean') and hasattr(self.scaler, 'std'):
+                tensors['scaler_mean'] = torch.tensor(self.scaler.mean)
+                tensors['scaler_std'] = torch.tensor(self.scaler.std)
+        
+        if self.learned_adj is not None:
+            if isinstance(self.learned_adj, np.ndarray):
+                tensors['learned_adj'] = torch.from_numpy(self.learned_adj)
+            else:
+                tensors['learned_adj'] = self.learned_adj
+        
+        # Save tensors with safetensors
+        save_file(tensors, path)
+        
+        # Save config as JSON separately
+        config_path = path.replace('.safetensors', '_config.json')
+        if not config_path.endswith('_config.json'):
+            config_path = path + '_config.json'
+        
+        with open(config_path, 'w') as f:
+            json.dump(self.config, f, indent=2)
+        
         print(f"Model saved to {path}")
+        print(f"Config saved to {config_path}")
         if self.learned_adj is not None:
             print(
                 f"  - Includes learned adjacency matrix of shape {self.learned_adj.shape}"
@@ -354,16 +377,53 @@ class MTGNNModel:
         Returns:
             MTGNNModel: Loaded model instance
         """
-        save_dict = torch.load(path, map_location=device)
-        config = save_dict["config"]
+        # Load tensors with safetensors
+        tensors = load_file(path, device=device)
+        
+        # Load config from JSON
+        config_path = path.replace('.safetensors', '_config.json')
+        if not config_path.endswith('_config.json'):
+            config_path = path + '_config.json'
+        
+        with open(config_path, 'r') as f:
+            config = json.load(f)
 
         if device is not None:
             config["device"] = device
 
         model_wrapper = cls(config=config)
-        model_wrapper.model.load_state_dict(save_dict["model_state_dict"])
-        model_wrapper.scaler = save_dict.get("scaler")
-        model_wrapper.learned_adj = save_dict.get("learned_adj")
+        
+        # Extract model state dict (excluding scaler and learned_adj tensors)
+        model_state_dict = {}
+        scaler_mean = None
+        scaler_std = None
+        learned_adj = None
+        
+        for key, tensor in tensors.items():
+            if key == 'scaler_mean':
+                scaler_mean = tensor
+            elif key == 'scaler_std':
+                scaler_std = tensor
+            elif key == 'learned_adj':
+                learned_adj = tensor
+            else:
+                model_state_dict[key] = tensor
+        
+        model_wrapper.model.load_state_dict(model_state_dict)
+        
+        # Reconstruct scaler if available
+        if scaler_mean is not None and scaler_std is not None:
+            class SimpleScaler:
+                def __init__(self, mean, std):
+                    self.mean = mean.item() if mean.dim() == 0 else mean
+                    self.std = std.item() if std.dim() == 0 else std
+                
+                def inverse_transform(self, data):
+                    return data * self.std + self.mean
+            
+            model_wrapper.scaler = SimpleScaler(scaler_mean, scaler_std)
+        
+        model_wrapper.learned_adj = learned_adj
 
         print(f"Model loaded from {path}")
         if model_wrapper.learned_adj is not None:

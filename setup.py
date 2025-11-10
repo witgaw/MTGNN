@@ -20,6 +20,7 @@ setup(
         "pandas>=0.25.0",
         "scikit-learn>=0.23.0",
         "matplotlib>=3.1.0",
+        "safetensors>=0.3.0",
     ],
     extras_require={
         "dev": [
